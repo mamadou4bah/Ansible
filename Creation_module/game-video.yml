@@ -1,0 +1,14 @@
+# un module qui permet de décrire un personnage de jeux vidéo
+- hosts: localhost
+  tasks:
+    - name: Test de notre module
+      game-video:
+        name: "MageDarkX"
+        attack: distance
+        inventory:
+          - powder
+          - stick
+          - potion
+      register: result
+
+    - debug: var=result

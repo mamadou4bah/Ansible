@@ -1,0 +1,116 @@
+---
+
+# WEB SERVER
+- hosts: web # machine ciblée
+  become: true # Exécuter toutes les tâches en tant qu'utilisateur root. On peut l'utiliser sur une tâche particulière
+  vars_files: vars/main.yml # Chargement des variables
+
+  tasks:
+  - name: install apache and php last version
+    apt: # Gestionnaire de package pour installer apache2, php, php-mysql
+      name: # liste de noms de packages
+        - apache2
+        - php
+        - php-mysql
+      state: present # valeurs possibles (latests, present, absent)
+      update_cache: yes # Equivalent apt-get update
+
+  - name: Give writable mode to http folder # Déployer les sources de l'application en donnant un droit en écriture sur le dossier
+    file:
+      path: /var/www/html
+      state: directory
+      mode: '0755'
+
+  - name: remove default index.html
+    file:
+      path: /var/www/html/index.html
+      state: absent
+
+  - name: upload web app source
+    copy:
+      src: app/
+      dest: /var/www/html/ # Copy app vers /var/www/html/
+
+  - name: deploy php database config
+    template:
+      src: "db-config.php.j2"
+      dest: "/var/www/html/db-config.php"
+  
+  - name: ensure apache service is start
+    service:
+      name: apache2
+      state: started
+      enabled: yes
+
+
+# DATABASE SERVER
+
+- hosts: db
+  become: true
+  vars_files: vars/main.yml
+  vars:
+    root_password: "my_secret_password"
+
+  tasks:
+  - name: install mysql
+    apt:
+      name: 
+        - mysql-server
+        - python-mysqldb # for mysql_db and mysql_user modules
+      state: present
+      update_cache: yes  # Equivalent apt-get update
+
+  - name: Create MySQL client config
+    copy:
+      dest: "/root/.my.cnf"
+      content: |
+        [client]
+        user=root
+        password={{ root_password }}
+      mode: 0400
+
+  - name: Allow external MySQL connections (1/2)
+    lineinfile:
+      path: /etc/mysql/mysql.conf.d/mysqld.cnf
+      regexp: '^skip-external-locking'
+      line: "# skip-external-locking"
+    notify: Restart mysql
+
+  - name: Allow external MySQL connections (2/2)
+    lineinfile:
+      path: /etc/mysql/mysql.conf.d/mysqld.cnf
+      regexp: '^bind-address'
+      line: "# bind-address"
+    notify: Restart mysql
+
+  - name: upload sql table config
+    template:
+      src: "table.sql.j2"
+      dest: "/tmp/table.sql"
+
+  - name: add sql table to database
+    mysql_db:
+      name: "{{ mysql_dbname }}"
+      state: present
+      login_user: root
+      login_password: '{{ root_password }}'
+      state: import 
+      target: /tmp/table.sql
+
+  - name: "Create {{ mysql_user }} with all {{ mysql_dbname }} privileges"
+    mysql_user:
+      name: "{{ mysql_user }}"
+      password: "{{ mysql_password }}"
+      priv: "{{ mysql_dbname }}.*:ALL"
+      host: "{{ webserver_host }}"
+      state: present
+      login_user: root
+      login_password: '{{ root_password }}'
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+
+  handlers:
+    - name: Restart mysql
+      service:
+        name: mysql
+        state: restarted
+

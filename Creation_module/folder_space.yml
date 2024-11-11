@@ -1,0 +1,8 @@
+# Créer un module qui permet de vérifier si un dossier est capable de stocker des données 
+# d'une taille entrée par utilisateu
+- hosts: localhost
+  tasks:
+    - name: 'check folder size of /home/ubuntu/ansible'
+      folder_space:
+        path: '/home/ubuntu/ansible'
+        size: '20g'
